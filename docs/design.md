@@ -64,6 +64,20 @@ Phase 0 (spike) results, 7 walk-offs:
 | Before the movement tick? | Yes: acceleration 0 inside the hook, 2000 at the end of the same frame |
 | Does a pop from the hook land that frame? | Yes: mode 2 right after the pop, 1 at the end of the frame (the stack resolves in the movement tick) |
 
+## Phase 1 live run (measured 2026-09-23, vanilla, keyboard)
+
+| | Result |
+|---|---|
+| Pushes | 16, every one produced a turn; no `no_turn`, `override`, `left_idle` or `safety` pops |
+| Push delay | 0.30 to 0.35 s after the camera stopped; longer where it crept before stopping |
+| Pops | 3 `done` (1.5 to 2.1 s after the push), 13 `input` (8 after the rotation ended, 5 mid turn) |
+| `bIsPlayingRootMotion` during a turn | false in all 10 samples, `bIsOnGround` true: safe as a pre-push guard |
+| Swing and go, walk-offs | no turn on swing and go; walk-offs clean (player report) |
+
+A turn near 180° that re-targets to the other side reads as over (`TurnInPlaceAngle` 0, idle) for one
+tick. "Turn finished" therefore also needs `RemainingTurnAngle` 0 and must hold for 0.1 s, or
+`chain_turns = false` would cut such a turn off.
+
 ## Other facts the code relies on
 
 - Find the pawn through the player controller's `Pawn`. `FindFirstOf("DawnwalkerPlayerCharacter")` can
@@ -79,6 +93,6 @@ Phase 0 (spike) results, 7 walk-offs:
 | Phase | Work |
 |---|---|
 | 0, done | Spike: the hook, same-frame pop proven |
-| 1 | Settle trigger (camera past 50° and turning under about 30°/s for 0.3 s), chaining while panning, done when a seen turn ends, pop in the hook, guards (pause, idle and walking only, another system's rotation mode, crouch), ini |
+| 1, done (tested live 2026-09-23, see below) | Settle trigger (camera past 50° and turning under about 30°/s for 0.3 s), chaining while panning, done when a seen turn ends, pop in the hook, guards (pause, idle and walking only, another system's rotation mode, crouch), ini |
 | 2 | Test matrix: the probe tests, then combat, torch, crouch, horse, cutscene, dialogue, wolf form, save and load, map changes |
 | 3 | Mid-turn polish if still needed, Mod Menu page, `zTBODLocomotionController` compatibility, release |
