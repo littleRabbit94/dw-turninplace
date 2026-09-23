@@ -12,6 +12,7 @@
 
 #include "config.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cmath>
@@ -61,6 +62,7 @@ namespace
     constexpr double SAFETY_AFTER = 20.0;
     constexpr double FINISH_HOLD = 0.1; // s a turn must read as over: a turn near 180° that re-targets to the other side reads over for a tick
     constexpr double IGNORED_EVERY = 0.25; // s between IsMoveInputIgnored calls while held
+    constexpr double RATE_SMOOTHING = 0.1; // s, time constant of the camera speed filter
     constexpr double HELD_LOG_EVERY = 1.0;
     constexpr uint64_t FIND_EVERY_MS = 2000; // FindFirstOf walks the whole object array
     constexpr uint64_t SETTINGS_EVERY_MS = 1000;
@@ -274,10 +276,11 @@ class DWTurnInPlace : public RC::CppUserModBase
     DWTurnInPlace()
     {
         ModName = STR("DWTurnInPlace");
-        ModVersion = STR("0.1.1");
+        ModVersion = STR("0.2.0");
         ModDescription = STR("Turn in place with the game's own turn animations");
         ModAuthors = STR("littleRabbit6");
         m_settings_stamp = last_write(dwtip::SETTINGS_PATH);
+        add_missing_keys();
         load_settings(false);
         Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] v{} loaded, {}\n"), ModVersion, settings_line());
     }
@@ -390,14 +393,36 @@ class DWTurnInPlace : public RC::CppUserModBase
     double m_retry_at = 0;
     bool m_was_input = false;
     const TCHAR* m_blocked = nullptr; // the last logged push_blocker reason
+    double m_camera_rate = 0;         // degrees per second, last tick
+    std::wstring m_detail;            // formatted pop detail, built only when a pop is logged
     Held m_held;
 
     auto settings_line() const -> std::wstring
     {
         const auto& s = m_settings;
-        return std::format(STR("enabled={} turn_angle={:g} settle_speed={:g} settle_time={:g} chain_turns={} toggle_key={} log_level={}"),
-                           m_enabled.load(), s.turn_angle, s.settle_speed, s.settle_time, s.chain_turns,
-                           s.toggle_key.empty() ? std::wstring(STR("none")) : widen(s.toggle_key), s.verbose ? STR("verbose") : STR("normal"));
+        return std::format(STR("enabled={} turn_angle={:g} settle_speed={:g} settle_time={:g} cancel_speed={:g} chain_turns={} toggle_key={} verbose_log={}"),
+                           m_enabled.load(), s.turn_angle, s.settle_speed, s.settle_time, s.cancel_speed, s.chain_turns,
+                           s.toggle_key.empty() ? std::wstring(STR("none")) : widen(s.toggle_key), s.verbose ? 1 : 0);
+    }
+
+    // Startup only, before the first load: if the file exists and lacks any of the 8 keys, append each as its
+    // shipped default line and refresh the stamp so the poll does not read the mod's own write as an external
+    // change. A missing file is left alone: defaults apply, and load_settings logs its own warning for that.
+    auto add_missing_keys() -> void
+    {
+        auto content = dwtip::read_file(dwtip::SETTINGS_PATH);
+        if (!content) return;
+        auto [updated, added] = dwtip::with_missing_keys(*content);
+        if (added.empty()) return;
+        if (!dwtip::write_file(dwtip::SETTINGS_PATH, updated))
+        {
+            Output::send<LogLevel::Warning>(STR("[DWTurnInPlace] turninplace.ini: could not add {} missing keys\n"), added.size());
+            return;
+        }
+        m_settings_stamp = last_write(dwtip::SETTINGS_PATH);
+        std::string names;
+        for (auto& key : added) names += (names.empty() ? "" : ", ") + key;
+        Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] turninplace.ini: added {} missing keys: {}\n"), added.size(), widen(names));
     }
 
     auto load_settings(bool reload) -> bool
@@ -432,7 +457,10 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_settings_stamp = stamp;
         if (stamp == 0 || !load_settings(true))
         {
-            Output::send<LogLevel::Warning>(STR("[DWTurnInPlace] turninplace.ini unreadable, current settings kept\n"));
+            // The Mod Menu's Apply does a temp-file-plus-rename: a poll can land in that gap and see the file
+            // momentarily missing. m_settings_stamp is left at this poll's (likely 0) stamp, so the next poll,
+            // once the file is back under its new write time, still differs and reloads.
+            if (m_settings.verbose) Output::send<LogLevel::Warning>(STR("[DWTurnInPlace] turninplace.ini unreadable, current settings kept\n"));
             return;
         }
         Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] settings reloaded: {}\n"), settings_line());
@@ -711,19 +739,25 @@ class DWTurnInPlace : public RC::CppUserModBase
         return s;
     }
 
-    auto track_settle(double yaw, double dt) -> void
+    // Returns true while the camera turns fast enough to cancel a held turn: cancel_speed, never below settle_speed.
+    // The rate is smoothed: per-frame mouse deltas spike well above a slow pan's average, and one threshold for
+    // both start and cancel made a pan near it start and cancel a turn every few frames (measured at 60 deg/s).
+    auto track_settle(double yaw, double dt) -> bool
     {
         if (!m_have_yaw)
         {
             m_last_yaw = yaw;
             m_have_yaw = true;
             m_settled = 0;
-            return;
+            m_camera_rate = 0;
+            return false;
         }
-        if (dt <= 0.0) return;
+        if (dt <= 0.0) return false;
         const double rate = std::abs(normalize(yaw - m_last_yaw)) / dt;
         m_last_yaw = yaw;
-        m_settled = rate < m_settings.settle_speed ? m_settled + dt : 0.0;
+        m_camera_rate += (rate - m_camera_rate) * (1.0 - std::exp(-dt / RATE_SMOOTHING));
+        m_settled = m_camera_rate >= m_settings.settle_speed ? 0.0 : m_settled + dt;
+        return m_camera_rate >= std::max(m_settings.cancel_speed, m_settings.settle_speed);
     }
 
     // The first guard that stops a push, or nullptr. Cheapest first; IsMoveInputIgnored is a UFunction call, so last.
@@ -783,7 +817,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         }
     }
 
-    auto update_held(const Sample& s, double dt) -> void
+    auto update_held(const Sample& s, double dt, bool camera_moving) -> void
     {
         auto& h = m_held;
         if (s.tip != 0.0f || s.rta != 0.0f) h.saw_turn = true;
@@ -810,6 +844,15 @@ class DWTurnInPlace : public RC::CppUserModBase
             if (move_input_ignored()) left = STR(" (input ignored)");
         }
         if (left) return release(STR("left_idle"), left, &s);
+
+        // While FaceDirection is pushed the game re-targets the turn to the camera at once, with no wait. A fast swing
+        // (above cancel_speed, smoothed) drops the push instead: the turn winds down (about 0.24 s, no snap)
+        // and the next one waits the full settle_time. A slower pan keeps the turn following the camera.
+        if (camera_moving)
+        {
+            if (m_settings.verbose) m_detail = std::format(STR(" (camera {:.0f} deg/s)"), m_camera_rate);
+            return release(STR("camera"), m_settings.verbose ? m_detail.c_str() : STR(""), &s);
+        }
 
         const double held = m_time - h.since;
         const bool finished = h.saw_turn && s.tip == 0.0f && s.rta == 0.0f && s.idle;
@@ -852,7 +895,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         const double dt = delta > 0.0f ? static_cast<double>(delta) : 0.0;
         m_time += dt;
         const Sample s = sample();
-        track_settle(s.yaw, dt);
+        const bool camera_moving = track_settle(s.yaw, dt);
         const double settled_before = m_settled;
         if (input) m_settled = 0.0; // no push until the camera settles again after the player stops
         if (input_popped) log_pop(STR("input"), STR(""), &s, g_input_pop_ok);
@@ -863,7 +906,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         }
         m_was_input = input;
 
-        if (g_handle >= 0) update_held(s, dt);
+        if (g_handle >= 0) update_held(s, dt, camera_moving);
         else if (!input) try_push(s);
     }
 };

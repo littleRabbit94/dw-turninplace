@@ -78,6 +78,31 @@ A turn near 180° that re-targets to the other side reads as over (`TurnInPlaceA
 tick. "Turn finished" therefore also needs `RemainingTurnAngle` 0 and must hold for 0.1 s, or
 `chain_turns = false` would cut such a turn off.
 
+## The wait applies to every turn (2026-09-23)
+
+While `FaceDirection` is pushed, the game re-targets the turn to the camera at once whenever the camera is
+past its own 45°: no wait. A player report ("turns almost immediately when turning the mouse quickly, even at
+a 1 s wait") matched the log: every push waited the full `settle_time`, but holds lasted 3 to 16 s and quick
+swings inside them turned at once. A fast camera now drops the push (`pop camera`); the turn winds down
+without a snap and the next waits again.
+
+One threshold for both start and cancel failed at `settle_speed` 60: per-frame mouse deltas spike above a
+slow pan's average, so a pan near the threshold started and cancelled a turn every few frames (holds of
+0.01 to 0.1 s in the log). The camera speed is now smoothed (0.1 s time constant) and has hysteresis: a
+turn starts below `settle_speed` held for `settle_time`, and is cancelled only above `cancel_speed`
+(never below `settle_speed`). A fixed 3 x `settle_speed` (90) left no start-stop churn
+(shortest hold 0.36 s over 22 turns), but the player's deliberate cancel swings measured 91 to 148 deg/s
+smoothed and their natural pans ran above 90, so the follow window felt too slow: hence its own setting.
+Between the two, a held turn keeps following a pan. Circling the character smoothly with a mouse is
+awkward (player report), so pan following is a side benefit, mostly for a controller stick.
+
+Shipped defaults from the player's tuning (0.2.0): `turn_angle` 60, `settle_time` 0.35 s, `settle_speed`
+60 deg/s, `cancel_speed` 180 deg/s. With smoothing, raising `settle_speed` alone to 60 (cancel at 3 x = 180)
+already felt right; `cancel_speed` stays a setting so the two can be tuned apart.
+
+The camera does not follow the actor during a turn (control yaw constant over a 2.4 s measured turn), so a
+turn cannot cancel itself.
+
 ## Crouch and combat (measured 2026-09-23)
 
 Crouched: `bIsIdle` stays false standing still, before and during a turn. A forced `FaceDirection` push
@@ -108,4 +133,4 @@ it as `override`.
 | 0, done | Spike: the hook, same-frame pop proven |
 | 1, done (tested live 2026-09-23, see below) | Settle trigger (camera past 50° and turning under about 30°/s for 0.3 s), chaining while panning, done when a seen turn ends, pop in the hook, guards (pause, idle and walking only, another system's rotation mode, crouch), ini |
 | 2, in progress | Test matrix. Done: combat, crouch, cutscene, dialogue, save and load. Wolf form is a sprint-only ability in vanilla, so the idle guards keep the mod out of it. Open: torch, horse (if any), map changes |
-| 3 | Mid-turn polish if still needed, Mod Menu page, `zTBODLocomotionController` compatibility, release |
+| 3, in progress | Done: Mod Menu page (0.2.0), camera speed smoothing and `cancel_speed`, tuned defaults. Open: `zTBODLocomotionController` compatibility, release packaging; mid-turn polish only if wanted |

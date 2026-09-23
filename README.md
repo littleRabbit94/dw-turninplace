@@ -21,13 +21,21 @@ at the next start. A missing file or key falls back to the default below, with o
 
 | Key | Default | Range | Meaning |
 |---|---|---|---|
-| `enabled` | `true` | `true`/`false`/`1`/`0` | Master switch |
-| `turn_angle` | `50` | 46 to 170 | Degrees between camera and facing before a turn |
-| `settle_speed` | `30` | 1 to 720 | Camera turning slower than this, in degrees per second, counts as settled |
-| `settle_time` | `0.3` | 0 to 3 | Seconds settled before a turn starts |
-| `chain_turns` | `true` | `true`/`false` | Keep turning while the camera keeps moving |
+| `enabled` | `1` | `true`/`false`/`1`/`0` | Master switch |
+| `turn_angle` | `60` | 46 to 170 | Degrees between camera and facing before a turn |
+| `settle_speed` | `60` | 5 to 180 | Camera turning slower than this, in degrees per second, counts as settled |
+| `settle_time` | `0.35` | 0 to 2 | Seconds settled before a turn starts |
+| `cancel_speed` | `180` | 30 to 360 | A camera swinging faster than this, in degrees per second, stops a turn; never below `settle_speed` |
+| `chain_turns` | `1` | `true`/`false`/`1`/`0` | Keep turning while the camera keeps moving |
 | `toggle_key` | blank | `F1`-`F12`, a letter or digit | Switches the mod on and off; blank is unbound |
-| `log_level` | `normal` | `normal`/`verbose` | `verbose` logs every push and pop with its reason |
+| `verbose_log` | `0` | `true`/`false`/`1`/`0` | `1` logs every push and pop with its reason |
+
+### Mod Menu
+
+The page ships as `mod_settings.ini` for Dawnwalker Mod Menu (Nexus mod 271). It is optional and lists every
+setting above except `toggle_key`. Apply rewrites the matching numbers in `turninplace.ini`, and the mod
+picks the change up within a second. A value hand-edited outside a setting's range above makes the whole
+page fail to open.
 
 ## Build
 
@@ -59,7 +67,7 @@ Close the game and copy `mod/` to `Dawnwalker/Binaries/Win64/ue4ss/Mods/DWTurnIn
 | `CMakeLists.txt` | Superbuild: RE-UE4SS from `DW_RE_UE4SS_SOURCE_DIR`, then the `DWTurnInPlace` target |
 | `src/dllmain.cpp` | The DLL: the `AddMovementInput` vtable hook, player discovery, the push and pop state machine on the engine tick |
 | `src/config.hpp` | Settings parsing for `turninplace.ini` |
-| `mod/` | Exactly what ships under `ue4ss/Mods/DWTurnInPlace/`: `enabled.txt`, `LICENSE`, `config/turninplace.ini`; `dlls/` is build output |
+| `mod/` | Exactly what ships under `ue4ss/Mods/DWTurnInPlace/`: `enabled.txt`, `LICENSE`, `config/turninplace.ini`, `mod_settings.ini`; `dlls/` is build output |
 | `docs/design.md` | How the game's turn in place works, the measurements behind the design, the plan |
 
 ## License

@@ -2,13 +2,24 @@
 // Copyright (C) 2026 littleRabbit6. GPL-3.0-or-later.
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace dwtip
 {
@@ -19,9 +30,10 @@ namespace dwtip
     struct Settings
     {
         bool enabled = true;
-        double turn_angle = 50.0;   // degrees between camera and facing before a turn
-        double settle_speed = 30.0; // camera degrees per second below which it counts as settled
-        double settle_time = 0.3;   // seconds settled before a turn starts
+        double turn_angle = 60.0;   // degrees between camera and facing before a turn
+        double settle_speed = 60.0; // camera degrees per second below which it counts as settled
+        double settle_time = 0.35;  // seconds settled before a turn starts
+        double cancel_speed = 180.0; // smoothed camera degrees per second above which a held turn is cancelled
         bool chain_turns = true;
         std::string toggle_key;
         bool verbose = false;
@@ -80,7 +92,7 @@ namespace dwtip
     {
         Parsed parsed;
         auto& s = parsed.settings;
-        static constexpr const char* KEYS[] = {"enabled", "turn_angle", "settle_speed", "settle_time", "chain_turns", "toggle_key", "log_level"};
+        static constexpr const char* KEYS[] = {"enabled", "turn_angle", "settle_speed", "settle_time", "chain_turns", "toggle_key", "verbose_log", "cancel_speed"};
         constexpr int COUNT = static_cast<int>(std::size(KEYS));
         bool seen[COUNT]{};
         bool bad[COUNT]{};
@@ -106,11 +118,8 @@ namespace dwtip
             case 3: ok = parse_number(value, s.settle_time); break;
             case 4: ok = parse_flag(value, s.chain_turns); break;
             case 5: s.toggle_key = value; break; // blank is valid: unbound
-            case 6:
-                if (lower(value) == "normal") s.verbose = false;
-                else if (lower(value) == "verbose") s.verbose = true;
-                else ok = false;
-                break;
+            case 6: ok = parse_flag(value, s.verbose); break;
+            case 7: ok = parse_number(value, s.cancel_speed); break;
             }
             bad[at] = !ok;
         }
@@ -118,8 +127,10 @@ namespace dwtip
         // The game's own TurnInPlaceYawOffset is 45: at or below it the pushed mode only turns the head, and the push
         // is dropped as no_turn a second later.
         s.turn_angle = std::clamp(s.turn_angle, 46.0, 170.0);
-        s.settle_speed = std::clamp(s.settle_speed, 1.0, 720.0);
-        s.settle_time = std::clamp(s.settle_time, 0.0, 3.0);
+        // Matches the Mod Menu page (mod_settings.ini): a value outside its ConfigKey range fails the whole page open.
+        s.settle_speed = std::clamp(s.settle_speed, 5.0, 180.0);
+        s.settle_time = std::clamp(s.settle_time, 0.0, 2.0);
+        s.cancel_speed = std::clamp(s.cancel_speed, 30.0, 360.0);
 
         for (int i = 0; i < COUNT; ++i)
         {
@@ -138,5 +149,84 @@ namespace dwtip
         std::ostringstream buffer;
         buffer << file.rdbuf();
         return buffer.str();
+    }
+
+    // Temp file plus rename, so a reader (the Mod Menu included) never sees a half-written file.
+    inline auto write_file(const std::string& path, const std::string& content) -> bool
+    {
+        auto tmp = path + ".dwtip.tmp";
+        bool written = false;
+        {
+            std::ofstream file(tmp, std::ios::binary | std::ios::trunc);
+            if (file)
+            {
+                file << content;
+                file.flush();
+                written = static_cast<bool>(file);
+            }
+        }
+        if (written && MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
+        DeleteFileA(tmp.c_str());
+        return false;
+    }
+
+    // The shipped default line for each key, exactly as written in mod/config/turninplace.ini: value plus comment.
+    // with_missing_keys appends whichever of these the file lacks; keeping this in step with that file is manual.
+    inline auto shipped_line(const std::string& key) -> const char*
+    {
+        static const std::map<std::string, const char*> lines{
+            {"enabled", "enabled = 1            ; master switch (1/0, true/false)"},
+            {"turn_angle", "turn_angle = 60        ; degrees between camera and facing before a turn (clamp 46..170)"},
+            {"settle_speed", "settle_speed = 60      ; camera turning slower than this, in degrees per second, counts as settled (clamp 5..180)"},
+            {"settle_time", "settle_time = 0.35     ; seconds settled before a turn starts (clamp 0..2)"},
+            {"chain_turns", "chain_turns = 1        ; keep turning while the camera pans slowly (1/0, true/false)"},
+            {"toggle_key", "toggle_key =           ; F1-F12 or a letter/digit; blank = unbound"},
+            {"cancel_speed", "cancel_speed = 180     ; a camera swinging faster than this, in degrees per second, stops a turn (clamp 30..360)"},
+            {"verbose_log", "verbose_log = 0        ; 0: load, errors, toggle; 1: every push and pop with reason, offset, flags"},
+        };
+        auto found = lines.find(key);
+        return found == lines.end() ? nullptr : found->second;
+    }
+
+    // Appends any of the 8 keys missing from the file, each as its shipped default line, and returns the added
+    // key names in the order above. Called at startup only: a live poll must never call this, since the Mod
+    // Menu's Apply briefly renames the file away and a poll landing in that gap must not read it as missing keys.
+    inline auto with_missing_keys(const std::string& content) -> std::pair<std::string, std::vector<std::string>>
+    {
+        static constexpr const char* KEYS[] = {"enabled", "turn_angle", "settle_speed", "settle_time", "chain_turns", "toggle_key", "verbose_log", "cancel_speed"};
+        bool seen[std::size(KEYS)]{};
+
+        std::istringstream in(content);
+        std::string line;
+        while (std::getline(in, line))
+        {
+            if (auto cut = line.find_first_of(";#"); cut != std::string::npos) line.resize(cut);
+            auto eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            const auto key = lower(trim(line.substr(0, eq)));
+            for (size_t i = 0; i < std::size(KEYS); ++i)
+            {
+                if (key == KEYS[i]) seen[i] = true;
+            }
+        }
+
+        std::vector<std::string> added;
+        std::string out = content;
+        bool needs_newline = !out.empty() && out.back() != '\n';
+        for (size_t i = 0; i < std::size(KEYS); ++i)
+        {
+            if (seen[i]) continue;
+            const char* text = shipped_line(KEYS[i]);
+            if (!text) continue;
+            if (needs_newline)
+            {
+                out += '\n';
+                needs_newline = false;
+            }
+            out += text;
+            out += '\n';
+            added.emplace_back(KEYS[i]);
+        }
+        return {out, added};
     }
 } // namespace dwtip
