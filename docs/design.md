@@ -78,6 +78,19 @@ A turn near 180° that re-targets to the other side reads as over (`TurnInPlaceA
 tick. "Turn finished" therefore also needs `RemainingTurnAngle` 0 and must hold for 0.1 s, or
 `chain_turns = false` would cut such a turn off.
 
+## Crouch and combat (measured 2026-09-23)
+
+Crouched: `bIsIdle` stays false standing still, before and during a turn. A forced `FaceDirection` push
+while crouched does rotate the actor (0.19 to 0.9 s, peak 200°/s), but the anim graph plays the standing
+turn from the crouch pose: the player saw a snap to a standing pose. The mod never pushes while
+crouched and pops if the player crouches mid turn; there is no setting for it.
+
+Combat (weapon drawn, standing): the game pushes `DA_Combat_MovementProfile` (priority 1, config rotation
+mode 2, `AimYawMax` 90) and its own rotation entry (mode 2, priority 1), and links
+`ABP_CoenVampire_Combat_C`. Its turns in combat are the game's own. The mod's push guard (stack holds only
+the base entry, mode `FaceVelocity`) keeps it out; a draw during a held turn grows the stack to 3 and pops
+it as `override`.
+
 ## Other facts the code relies on
 
 - Find the pawn through the player controller's `Pawn`. `FindFirstOf("DawnwalkerPlayerCharacter")` can
@@ -94,5 +107,5 @@ tick. "Turn finished" therefore also needs `RemainingTurnAngle` 0 and must hold 
 |---|---|
 | 0, done | Spike: the hook, same-frame pop proven |
 | 1, done (tested live 2026-09-23, see below) | Settle trigger (camera past 50° and turning under about 30°/s for 0.3 s), chaining while panning, done when a seen turn ends, pop in the hook, guards (pause, idle and walking only, another system's rotation mode, crouch), ini |
-| 2 | Test matrix: the probe tests, then combat, torch, crouch, horse, cutscene, dialogue, wolf form, save and load, map changes |
+| 2, in progress | Test matrix. Done: combat, crouch, cutscene, dialogue, save and load. Wolf form is a sprint-only ability in vanilla, so the idle guards keep the mod out of it. Open: torch, horse (if any), map changes |
 | 3 | Mid-turn polish if still needed, Mod Menu page, `zTBODLocomotionController` compatibility, release |

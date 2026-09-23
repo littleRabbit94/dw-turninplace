@@ -3,8 +3,9 @@
 A turn-in-place mod for The Blood of Dawnwalker. When Coen stands still and the camera swings away from
 where he faces, he turns on the spot with the game's own turn animations instead of only turning his head.
 
-Status: in development. Turns in place while exploring (tested); combat, torch, crouch, horse, cutscenes and
-dialogue are not tested yet.
+Status: in development. Turns in place while standing and exploring (tested). Crouched, it stays out: the game
+has no crouched turn for this. In combat the game's own combat turns run and the mod stays out. Torch and horse are
+not tested yet.
 
 ## Requirements
 
@@ -25,7 +26,6 @@ at the next start. A missing file or key falls back to the default below, with o
 | `settle_speed` | `30` | 1 to 720 | Camera turning slower than this, in degrees per second, counts as settled |
 | `settle_time` | `0.3` | 0 to 3 | Seconds settled before a turn starts |
 | `chain_turns` | `true` | `true`/`false` | Keep turning while the camera keeps moving |
-| `crouch` | `true` | `true`/`false` | Turn while crouched |
 | `toggle_key` | blank | `F1`-`F12`, a letter or digit | Switches the mod on and off; blank is unbound |
 | `log_level` | `normal` | `normal`/`verbose` | `verbose` logs every push and pop with its reason |
 

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -22,7 +23,6 @@ namespace dwtip
         double settle_speed = 30.0; // camera degrees per second below which it counts as settled
         double settle_time = 0.3;   // seconds settled before a turn starts
         bool chain_turns = true;
-        bool crouch = true;
         std::string toggle_key;
         bool verbose = false;
     };
@@ -80,9 +80,10 @@ namespace dwtip
     {
         Parsed parsed;
         auto& s = parsed.settings;
-        bool seen[8]{};
-        bool bad[8]{};
-        static constexpr const char* KEYS[8] = {"enabled", "turn_angle", "settle_speed", "settle_time", "chain_turns", "crouch", "toggle_key", "log_level"};
+        static constexpr const char* KEYS[] = {"enabled", "turn_angle", "settle_speed", "settle_time", "chain_turns", "toggle_key", "log_level"};
+        constexpr int COUNT = static_cast<int>(std::size(KEYS));
+        bool seen[COUNT]{};
+        bool bad[COUNT]{};
 
         std::istringstream in(content);
         std::string line;
@@ -94,7 +95,7 @@ namespace dwtip
             const auto key = lower(trim(line.substr(0, eq)));
             const auto value = trim(line.substr(eq + 1));
             const auto at = std::find_if(std::begin(KEYS), std::end(KEYS), [&](const char* k) { return key == k; }) - std::begin(KEYS);
-            if (at >= 8) continue;
+            if (at >= COUNT) continue; // unknown keys, such as crouch from 0.1.0, are ignored
             seen[at] = true;
             bool ok = true;
             switch (at)
@@ -104,9 +105,8 @@ namespace dwtip
             case 2: ok = parse_number(value, s.settle_speed); break;
             case 3: ok = parse_number(value, s.settle_time); break;
             case 4: ok = parse_flag(value, s.chain_turns); break;
-            case 5: ok = parse_flag(value, s.crouch); break;
-            case 6: s.toggle_key = value; break; // blank is valid: unbound
-            case 7:
+            case 5: s.toggle_key = value; break; // blank is valid: unbound
+            case 6:
                 if (lower(value) == "normal") s.verbose = false;
                 else if (lower(value) == "verbose") s.verbose = true;
                 else ok = false;
@@ -121,7 +121,7 @@ namespace dwtip
         s.settle_speed = std::clamp(s.settle_speed, 1.0, 720.0);
         s.settle_time = std::clamp(s.settle_time, 0.0, 3.0);
 
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < COUNT; ++i)
         {
             if (seen[i] && !bad[i]) continue;
             if (!parsed.defaulted.empty()) parsed.defaulted += ", ";

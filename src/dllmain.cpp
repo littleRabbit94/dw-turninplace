@@ -274,7 +274,7 @@ class DWTurnInPlace : public RC::CppUserModBase
     DWTurnInPlace()
     {
         ModName = STR("DWTurnInPlace");
-        ModVersion = STR("0.1.0");
+        ModVersion = STR("0.1.1");
         ModDescription = STR("Turn in place with the game's own turn animations");
         ModAuthors = STR("littleRabbit6");
         m_settings_stamp = last_write(dwtip::SETTINGS_PATH);
@@ -389,13 +389,14 @@ class DWTurnInPlace : public RC::CppUserModBase
     double m_settled = 0;
     double m_retry_at = 0;
     bool m_was_input = false;
+    const TCHAR* m_blocked = nullptr; // the last logged push_blocker reason
     Held m_held;
 
     auto settings_line() const -> std::wstring
     {
         const auto& s = m_settings;
-        return std::format(STR("enabled={} turn_angle={:g} settle_speed={:g} settle_time={:g} chain_turns={} crouch={} toggle_key={} log_level={}"),
-                           m_enabled.load(), s.turn_angle, s.settle_speed, s.settle_time, s.chain_turns, s.crouch,
+        return std::format(STR("enabled={} turn_angle={:g} settle_speed={:g} settle_time={:g} chain_turns={} toggle_key={} log_level={}"),
+                           m_enabled.load(), s.turn_angle, s.settle_speed, s.settle_time, s.chain_turns,
                            s.toggle_key.empty() ? std::wstring(STR("none")) : widen(s.toggle_key), s.verbose ? STR("verbose") : STR("normal"));
     }
 
@@ -725,13 +726,42 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_settled = rate < m_settings.settle_speed ? m_settled + dt : 0.0;
     }
 
+    // The first guard that stops a push, or nullptr. Cheapest first; IsMoveInputIgnored is a UFunction call, so last.
+    auto push_blocker(const Sample& s) -> const TCHAR*
+    {
+        if (!m_enabled.load()) return STR("disabled");
+        // Combat pushes DA_Combat_MovementProfile and its own FaceDirection entry at priority 1: its turns are the game's.
+        if (s.stack != 1 || s.rotation_mode != FACE_VELOCITY) return STR("rotation mode taken");
+        if (s.movement_mode != MOVE_WALKING || !s.on_ground) return STR("not walking");
+        // The game has no crouched FaceDirection turn: it plays the standing one from the crouch pose.
+        if (s.crouching) return STR("crouched");
+        if (s.speed >= IDLE_SPEED || !s.idle) return STR("not idle");
+        if (s.root_motion) return STR("root motion");
+        if (m_time < m_retry_at) return STR("retry cooldown");
+        if (move_input_ignored()) return STR("input ignored");
+        return nullptr;
+    }
+
     auto try_push(const Sample& s) -> void
     {
-        if (!m_enabled.load() || s.stack != 1 || s.rotation_mode != FACE_VELOCITY || s.movement_mode != MOVE_WALKING) return;
-        if (s.speed >= IDLE_SPEED || !s.on_ground || s.root_motion || !s.idle) return;
-        if (!m_settings.crouch && s.crouching) return;
-        if (std::abs(s.offset) <= m_settings.turn_angle || m_settled < m_settings.settle_time || m_time < m_retry_at) return;
-        if (move_input_ignored()) return; // a UFunction call: last
+        // Only a settled camera past turn_angle asks for a turn.
+        if (std::abs(s.offset) <= m_settings.turn_angle || m_settled < m_settings.settle_time)
+        {
+            m_blocked = nullptr;
+            return;
+        }
+        if (const TCHAR* why = push_blocker(s))
+        {
+            // Once per reason while the camera stays past the angle, not every tick.
+            if (m_settings.verbose && why != m_blocked)
+            {
+                Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] blocked ({}) offset={:.0f} profile={}\n"), why, s.offset,
+                                               s.profile ? s.profile->GetName() : std::wstring(STR("none")));
+            }
+            m_blocked = why;
+            return;
+        }
+        m_blocked = nullptr;
 
         uint8_t params[PARAMS_MAX]{};
         params[m_push_mode_at] = FACE_DIRECTION;
@@ -748,8 +778,8 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_held = Held{m_time, m_time, m_time + HELD_LOG_EVERY, m_time + IGNORED_EVERY, 0.0, s.profile, field<int32_t>(g_cmc.object, m_stack_at + 8), false};
         if (m_settings.verbose)
         {
-            Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] push offset={:.0f} settled={:.2f}s handle={} stack={}\n"), s.offset, m_settled, handle,
-                                           m_held.stack_after_push);
+            Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] push offset={:.0f} settled={:.2f}s handle={} stack={} profile={}\n"), s.offset, m_settled,
+                                           handle, m_held.stack_after_push, s.profile ? s.profile->GetName() : std::wstring(STR("none")));
         }
     }
 
@@ -773,7 +803,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         if (!m_enabled.load()) left = STR(" (disabled)");
         else if (s.movement_mode != MOVE_WALKING) left = STR(" (movement mode)");
         else if (s.speed > WALK_OFF_SPEED) left = STR(" (speed)");
-        else if (!m_settings.crouch && s.crouching) left = STR(" (crouch)");
+        else if (s.crouching) left = STR(" (crouch)");
         else if (m_time >= h.next_ignored_check)
         {
             h.next_ignored_check = m_time + IGNORED_EVERY;
