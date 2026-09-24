@@ -541,8 +541,11 @@ class DWTurnInPlace : public RC::CppUserModBase
         auto** vtable = *reinterpret_cast<uintptr_t***>(player_cdo);
         auto** entry = &vtable[slot];
         // On a reused image the slot can still hold this hook (the last unload left it in place): the original
-        // is the one already known, never the hook itself. A foreign hook in a slot we once hooked may chain to
-        // this hook, so taking it as the original would call in a loop; the mod stays inactive instead.
+        // is the one already known, never the hook itself. When the unload left the slot alone because a foreign
+        // hook sat over ours (g_vtable_entry still set), that hook may chain to this one, so taking it as the
+        // original would call in a loop; the mod stays inactive instead. After a clean restore g_vtable_entry is
+        // null and the slot is captured afresh, whatever it holds: g_original may then be stale (a mod that hooked
+        // below us and has since reloaded), which is why it is not compared.
         if (*entry == reinterpret_cast<uintptr_t*>(&add_movement_input_hook))
         {
             if (!g_original)
@@ -555,7 +558,7 @@ class DWTurnInPlace : public RC::CppUserModBase
                                            slot, EXPECTED_SLOT);
             return true;
         }
-        if (g_original && *entry != reinterpret_cast<uintptr_t*>(g_original))
+        if (g_vtable_entry == entry && g_original && *entry != reinterpret_cast<uintptr_t*>(g_original))
         {
             Output::send<LogLevel::Error>(STR("[DWTurnInPlace] AddMovementInput slot holds another hook installed over this mod's, inactive\n"));
             return false;
