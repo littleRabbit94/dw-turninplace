@@ -56,7 +56,7 @@ Credit field: `GPL-3.0-or-later. Built on UE4SS by the UE4SS-RE team (MIT). Insp
 | `main.dll` | GPL-3.0-or-later (own code). Links `UE4SS.dll` (RE-UE4SS, MIT) at run time; its other imports are the MSVC and Windows runtimes, which the player already has and the archive does not carry. No build path inside (`/PDBALTPATH:main.pdb`). |
 | `mod_settings.ini`, `turninplace.ini`, `enabled.txt` | Own text, GPL-3.0-or-later. `mod_settings.ini` follows the file format of mmarcussa's Mod Setting Menu; no code from it. |
 | `LICENSE` | GPL-3.0 text, unchanged |
-| Page art | Header and thumbnail from own captures; Coen cut out with rembg (an AI tool editing a capture, not generated art). Fonts Anton, Jost and Cinzel Decorative, SIL OFL. The captions reference Zoolander ("ambi-turner") and "Total Eclipse of the Heart" ("Turn around") as text only; no stills, no lyrics. Details in `art/NOTES.md`. |
+| Page art | Header and thumbnail from own captures; Coen cut out with rembg. Fonts Anton, Jost and Cinzel Decorative, SIL OFL. The captions reference Zoolander ("ambi-turner") and "Total Eclipse of the Heart" ("Turn around") as text only; no stills, no lyrics. Details in `art/NOTES.md`. |
 | Credited, not shipped | Vaei's [TurnInPlace](https://github.com/Vaei/TurnInPlace), MIT (checked 2026-09-23), as inspiration. No code from it. |
 
 ## Images
