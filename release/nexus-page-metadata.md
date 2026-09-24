@@ -17,7 +17,7 @@ and FreeCam - UE4SS (mod 350, Utilities). Read 2026-09-23. No other page on this
 |---|---|
 | Mod name | `Turn In Place` |
 | Summary | `Standing still, your character turns on the spot to face the camera with the game's own turn animations, once the camera settles. Walking off starts a normal walk or run. Settings in an ini or on a Mod Menu page. Needs UE4SS and Steam build 25232147.` |
-| Version | `0.2.1` |
+| Version | `0.2.2` |
 | Category | `Gameplay` |
 | Tags | `Animation`, `Gameplay`, `Quality of Life`, `AI Assisted` |
 | Adult content | No |
@@ -30,7 +30,7 @@ and FreeCam - UE4SS (mod 350, Utilities). Read 2026-09-23. No other page on this
 | Field | Value |
 |---|---|
 | File name | `Turn In Place` |
-| Version | `0.2.1` |
+| Version | `0.2.2` |
 | Category | Main Files |
 | File | `dist/TurnInPlace-0.2.1.zip`, 193,419 bytes, built 2026-09-23 |
 | Description | `Close the game, then extract into the folder that holds the ue4ss folder (Dawnwalker/Binaries/Win64, the one with Dawnwalker.exe). The archive carries the folder path, so the mod lands in ue4ss/Mods/DWTurnInPlace by itself. Needs UE4SS (mod 18 or mod 283) and Steam build 25232147. No mods.txt edit.` |
@@ -94,6 +94,10 @@ Plain text, no BBCode. `Build-Package.py` reads the first version in this block 
 differs from `ModVersion` and `[Mod] Version`: add the new entry on top.
 
 ```
+0.2.2 - Turns after an interaction
+
+- Fixed: after some interactions (for example right after the wake-up cutscene) the game kept treating a few inputs as held and never reported your character as idle, so turning stopped until you drew a weapon or loaded a save. Standing still for a second now counts as idle too.
+
 0.2.1 - Hot reload fix
 
 - UE4SS hot reload (Ctrl+R) no longer crashes the game: the mod keeps its DLL loaded and restarts on it. Note that a reload never picks up a new main.dll; close the game for that.

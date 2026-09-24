@@ -116,6 +116,18 @@ mode 2, `AimYawMax` 90) and its own rotation entry (mode 2, priority 1), and lin
 the base entry, mode `FaceVelocity`) keeps it out; a draw during a held turn grows the stack to 3 and pops
 it as `override`.
 
+## Stuck idle after an interaction (measured 2026-09-24)
+
+An interaction (`Player.IsInteracting`, seen right after the CS004 wake-up cutscene) can end with
+`Player.Input.Interact`, `Player.Input.LLD` and `Player.Input.WeaponChange` left on the character's tags.
+`Player.Input.*` tags mark held inputs (`Look`, `MoveForward`, `Walk` come and go with the keys), so the
+game treats those three as held: `bIsIdle` and the random idle timer stay frozen while standing still,
+through any number of walk and stop cycles, until a combat toggle or a load clears them. In vanilla the
+only symptom is no idle fidgets. A forced `FaceDirection` push in that state still plays a normal turn
+(142.6 to 359 deg, player-confirmed animated), so the mod counts 1 s of standing still (`!bIsMoving`,
+below `IDLE_SPEED`, no root motion) as idle too. In normal play `bIsIdle` follows `bIsMoving` by ~0.75 s
+and wins. Walking off mid-turn and camera cancels do not cause the stuck state (tested).
+
 ## Other facts the code relies on
 
 - Find the pawn through the player controller's `Pawn`. `FindFirstOf("DawnwalkerPlayerCharacter")` can

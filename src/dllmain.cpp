@@ -56,6 +56,10 @@ namespace
     constexpr size_t PARAMS_MAX = 32;    // every UFunction called here takes 16 bytes or less
 
     constexpr double IDLE_SPEED = 5.0;      // cm/s, 2D: a push starts only below this
+    // s standing still that counts as idle when bIsIdle stays false. An interaction can leave Player.Input.* tags
+    // behind (Interact, LLD, WeaponChange), and the anim graph then never reports idle until a combat toggle or a
+    // load; the game still plays a pushed turn. bIsIdle normally follows bIsMoving by ~0.75 s, so it wins in play.
+    constexpr double STILL_IDLE_AFTER = 1.0;
     constexpr double WALK_OFF_SPEED = 50.0; // cm/s, 2D: a held push is dropped above this
     constexpr double NO_TURN_AFTER = 1.0;   // s held without the game starting a turn
     constexpr double RETRY_AFTER = 1.0;     // s after a no_turn pop before the next push
@@ -289,7 +293,8 @@ namespace
         UObject* profile = nullptr;
         float tip = 0; // TurnInPlaceAngle
         float rta = 0; // RemainingTurnAngle
-        bool idle = false;
+        bool idle = false; // bIsIdle
+        bool moving = false;
         bool crouching = false;
         bool on_ground = false;
         bool root_motion = false;
@@ -302,7 +307,7 @@ class DWTurnInPlace : public RC::CppUserModBase
     DWTurnInPlace()
     {
         ModName = STR("DWTurnInPlace");
-        ModVersion = STR("0.2.1");
+        ModVersion = STR("0.2.2");
         ModDescription = STR("Turn in place with the game's own turn animations");
         ModAuthors = STR("littleRabbit6");
         if (!pin_module())
@@ -413,6 +418,7 @@ class DWTurnInPlace : public RC::CppUserModBase
     int32_t m_tip_at = -1;
     int32_t m_rta_at = -1;
     BoolField m_idle;
+    BoolField m_moving;
     BoolField m_crouching;
     BoolField m_on_ground;
     BoolField m_root_motion;
@@ -422,6 +428,7 @@ class DWTurnInPlace : public RC::CppUserModBase
     double m_last_yaw = 0;
     bool m_have_yaw = false;
     double m_settled = 0;
+    double m_still = 0; // s not moving, below IDLE_SPEED, no root motion
     double m_retry_at = 0;
     bool m_was_input = false;
     const TCHAR* m_blocked = nullptr; // the last logged push_blocker reason
@@ -649,6 +656,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_anim_ok = false;
         m_have_yaw = false;
         m_settled = 0;
+        m_still = 0;
         if (!pawn)
         {
             Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] player lost\n"));
@@ -726,10 +734,11 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_tip_at = offset_of(anim, STR("TurnInPlaceAngle"), sizeof(float));
         m_rta_at = offset_of(anim, STR("RemainingTurnAngle"), sizeof(float));
         m_idle = BoolField::of(anim, STR("bIsIdle"));
+        m_moving = BoolField::of(anim, STR("bIsMoving"));
         m_crouching = BoolField::of(anim, STR("bIsCrouching"));
         m_on_ground = BoolField::of(anim, STR("bIsOnGround"));
         m_root_motion = BoolField::of(anim, STR("bIsPlayingRootMotion"));
-        m_anim_ok = m_tip_at >= 0 && m_rta_at >= 0 && m_idle.ok() && m_crouching.ok() && m_on_ground.ok() && m_root_motion.ok();
+        m_anim_ok = m_tip_at >= 0 && m_rta_at >= 0 && m_idle.ok() && m_moving.ok() && m_crouching.ok() && m_on_ground.ok() && m_root_motion.ok();
         if (!m_anim_ok)
         {
             Output::send<LogLevel::Error>(STR("[DWTurnInPlace] anim instance {} lacks the turn in place properties, inactive while it is up\n"),
@@ -788,6 +797,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         s.tip = field<float>(anim, m_tip_at);
         s.rta = field<float>(anim, m_rta_at);
         s.idle = m_idle.read(anim);
+        s.moving = m_moving.read(anim);
         s.crouching = m_crouching.read(anim);
         s.on_ground = m_on_ground.read(anim);
         s.root_motion = m_root_motion.read(anim);
@@ -815,6 +825,11 @@ class DWTurnInPlace : public RC::CppUserModBase
         return m_camera_rate >= std::max(m_settings.cancel_speed, m_settings.settle_speed);
     }
 
+    auto idle(const Sample& s) const -> bool
+    {
+        return s.idle || m_still >= STILL_IDLE_AFTER;
+    }
+
     // The first guard that stops a push, or nullptr. Cheapest first; IsMoveInputIgnored is a UFunction call, so last.
     auto push_blocker(const Sample& s) -> const TCHAR*
     {
@@ -824,7 +839,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         if (s.movement_mode != MOVE_WALKING || !s.on_ground) return STR("not walking");
         // The game has no crouched FaceDirection turn: it plays the standing one from the crouch pose.
         if (s.crouching) return STR("crouched");
-        if (s.speed >= IDLE_SPEED || !s.idle) return STR("not idle");
+        if (s.speed >= IDLE_SPEED || !idle(s)) return STR("not idle");
         if (s.root_motion) return STR("root motion");
         if (m_time < m_retry_at) return STR("retry cooldown");
         if (move_input_ignored()) return STR("input ignored");
@@ -867,8 +882,9 @@ class DWTurnInPlace : public RC::CppUserModBase
         m_held = Held{m_time, m_time, m_time + HELD_LOG_EVERY, m_time + IGNORED_EVERY, 0.0, s.profile, field<int32_t>(g_cmc.object, m_stack_at + 8), false};
         if (m_settings.verbose)
         {
-            Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] push offset={:.0f} settled={:.2f}s handle={} stack={} profile={}\n"), s.offset, m_settled,
-                                           handle, m_held.stack_after_push, s.profile ? s.profile->GetName() : std::wstring(STR("none")));
+            Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] push offset={:.0f} settled={:.2f}s handle={} stack={} profile={}{}\n"), s.offset, m_settled,
+                                           handle, m_held.stack_after_push, s.profile ? s.profile->GetName() : std::wstring(STR("none")),
+                                           s.idle ? STR("") : STR(" (still, bIsIdle false)"));
         }
     }
 
@@ -910,7 +926,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         }
 
         const double held = m_time - h.since;
-        const bool finished = h.saw_turn && s.tip == 0.0f && s.rta == 0.0f && s.idle;
+        const bool finished = h.saw_turn && s.tip == 0.0f && s.rta == 0.0f && idle(s);
         h.finished_for = finished ? h.finished_for + dt : 0.0;
         if (h.finished_for >= FINISH_HOLD)
         {
@@ -950,6 +966,7 @@ class DWTurnInPlace : public RC::CppUserModBase
         const double dt = delta > 0.0f ? static_cast<double>(delta) : 0.0;
         m_time += dt;
         const Sample s = sample();
+        m_still = !s.moving && s.speed < IDLE_SPEED && !s.root_motion ? m_still + dt : 0.0;
         const bool camera_moving = track_settle(s.yaw, dt);
         const double settled_before = m_settled;
         if (input) m_settled = 0.0; // no push until the camera settles again after the player stops
