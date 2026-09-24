@@ -302,7 +302,7 @@ class DWTurnInPlace : public RC::CppUserModBase
     DWTurnInPlace()
     {
         ModName = STR("DWTurnInPlace");
-        ModVersion = STR("0.2.0");
+        ModVersion = STR("0.2.1");
         ModDescription = STR("Turn in place with the game's own turn animations");
         ModAuthors = STR("littleRabbit6");
         if (!pin_module())
