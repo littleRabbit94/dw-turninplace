@@ -56,15 +56,20 @@ Credit field: `GPL-3.0-or-later. Built on UE4SS by the UE4SS-RE team (MIT). Insp
 | `main.dll` | GPL-3.0-or-later (own code). Links `UE4SS.dll` (RE-UE4SS, MIT) at run time; its other imports are the MSVC and Windows runtimes, which the player already has and the archive does not carry. No build path inside (`/PDBALTPATH:main.pdb`). |
 | `mod_settings.ini`, `turninplace.ini`, `enabled.txt` | Own text, GPL-3.0-or-later. `mod_settings.ini` follows the file format of mmarcussa's Mod Setting Menu; no code from it. |
 | `LICENSE` | GPL-3.0 text, unchanged |
-| Page art | None this release |
+| Page art | Header and thumbnail from own captures; Coen cut out with rembg (an AI tool editing a capture, not generated art). Fonts Anton, Jost and Cinzel Decorative, SIL OFL. The captions reference Zoolander ("ambi-turner") and "Total Eclipse of the Heart" ("Turn around") as text only; no stills, no lyrics. Details in `art/NOTES.md`. |
 | Credited, not shipped | Vaei's [TurnInPlace](https://github.com/Vaei/TurnInPlace), MIT (checked 2026-09-23), as inspiration. No code from it. |
 
 ## Images
 
 | Image | File | Uploaded URL |
 |---|---|---|
-| Page header, 1300x372 | not made for 0.2.0 | |
+| Page header, 1300x372 | `dist/header-1300x372-turnaround.png` | (fill in) |
+| Thumbnail, 1600x900 | `dist/thumbnail-ambiturner-im.png` | (fill in) |
 | Gallery | Wanted: a before and after of a camera swing while standing (head only, then the turn) | |
+
+Nexus's header upload crops to 1300x372. How the two images were built (sources, fonts and their
+licenses, positions) is in `art/NOTES.md`, which is not tracked, like the rest of `art/` and `dist/`.
+`art/make_header.py` and `art/make_thumbnails.py` rebuild them.
 
 ## Before upload
 
