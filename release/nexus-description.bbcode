@@ -1,0 +1,71 @@
+[size=5][b]Turn In Place[/b][/size]
+
+In the base game, when you stand still and swing the camera away, only your character's head follows. With this mod your character turns on the spot to face it, using the game's own turn animations. They are already in the game; exploration just never uses them. Turn In Place is a C++ mod for UE4SS.
+
+[size=4][b]Features[/b][/size]
+[list]
+[*]Turns on the spot with the game's own turn animations (45, 90 and 180 degrees, left and right).[/*]
+[*]Waits until the camera settles, so a quick glance turns nothing, and neither does swinging the camera and walking straight off.[/*]
+[*]Walking off hands control back to the game on the same frame, so your starts are the game's normal walk and run starts.[/*]
+[*]A quick camera swing cancels a turn. A slow pan keeps your character turning with it.[/*]
+[*]Stays out of combat, where the game's own combat turns run, and out of crouch, cutscenes and dialogue.[/*]
+[*]Settings on a Mod Setting Menu page with live Apply (optional), or in an ini the mod re-reads while the game runs.[/*]
+[*]Optional toggle key, unbound by default.[/*]
+[*]The camera is only read, never written, so camera mods such as Smoothwalker and FreeCam are unaffected.[/*]
+[/list]
+
+[size=4][b]Settings[/b][/size]
+With [url=https://www.nexusmods.com/thebloodofdawnwalker/mods/271]Mod Setting Menu[/url] installed, Turn In Place gets its own page under Mod Settings, in the main and pause menus. It has every setting except the toggle key, and Apply takes effect at once.
+
+Without it, edit [font=Courier New]config\turninplace.ini[/font] in the mod folder. Save, and the change applies in game within a second. The toggle key applies at the next start.
+
+Defaults, from tuning in play:
+[list]
+[*][font=Courier New]turn_angle = 60[/font]: degrees between the camera and where your character faces before a turn.[/*]
+[*][font=Courier New]settle_time = 0.35[/font]: seconds the camera has to hold still before a turn starts.[/*]
+[*][font=Courier New]settle_speed = 60[/font]: a camera turning slower than this, in degrees per second, counts as stopped.[/*]
+[*][font=Courier New]cancel_speed = 180[/font]: a swing faster than this stops a turn.[/*]
+[*][font=Courier New]chain_turns = 1[/font]: keep turning while the camera pans slowly.[/*]
+[*][font=Courier New]enabled = 1[/font], [font=Courier New]toggle_key =[/font] (blank, no key), [font=Courier New]verbose_log = 0[/font] (1 logs every turn with its reason, for bug reports).[/*]
+[/list]
+The ini lists each setting's range.
+
+[size=4][b]Requirements[/b][/size]
+[list]
+[*]The Steam version of the game, build 1.0.5 (25232147).[/*]
+[*]UE4SS, either one:
+[list]
+[*][url=https://www.nexusmods.com/thebloodofdawnwalker/mods/18]UE4SS for Dawnwalker[/url] by Vercadi, file Dawnwalker-UE4SS-v1.2.1-rc6-build25232147 (version 1.3 on that page).[/*]
+[*][url=https://www.nexusmods.com/thebloodofdawnwalker/mods/283]UE4SS for BoD[/url] by Framecore, version 2c or 2b, Performance or Compatibility profile.[/*]
+[/list]
+[/*]
+[*]Optional: [url=https://www.nexusmods.com/thebloodofdawnwalker/mods/271]Mod Setting Menu[/url] for the in-game settings page. 1.0.5 or later hides the turning settings while the mod is off; tested on 1.0.7.[/*]
+[/list]
+
+[size=4][b]Installation[/b][/size]
+Close the game, then extract the archive into the folder that holds the [i]ue4ss[/i] folder and Dawnwalker.exe:
+[code]<Steam library>\steamapps\common\The Blood of Dawnwalker\Dawnwalker\Binaries\Win64[/code]
+The archive carries the folder path, so the mod lands in [i]ue4ss\Mods\DWTurnInPlace[/i]. No mods.txt edit needed. [font=Courier New]UE4SS.log[/font] shows these two lines once it has loaded:
+[code][DWTurnInPlace] v0.2.0 loaded, enabled=true turn_angle=60 ...
+[DWTurnInPlace] AddMovementInput hooked, vtable slot 267 ...[/code]
+To keep your settings on a later update, skip [font=Courier New]config\turninplace.ini[/font] when extracting. The mod adds any new settings to your file at the next start.
+
+To uninstall, delete [i]ue4ss\Mods\DWTurnInPlace[/i]. Nothing from the mod goes into your saves: a save made in the middle of a turn loads without the mod as a normal standing character.
+
+[size=4][b]Compatibility[/b][/size]
+[list]
+[*]The mod changes only the character's rotation mode while you stand still, and hands it back once your character has finished turning, the camera swings fast, or you move.[/*]
+[*]Whenever something else holds a rotation mode (combat, or another mod), it stays out.[/*]
+[*]Works alongside [url=https://www.nexusmods.com/thebloodofdawnwalker/mods/613]Smoothwalker[/url] and [url=https://www.nexusmods.com/thebloodofdawnwalker/mods/350]FreeCam[/url].[/*]
+[/list]
+
+[size=4][b]Known limitations[/b][/size]
+[list]
+[*]Walking off mid-turn briefly shows the turn animation's own footstep before the start takes over.[/*]
+[*]No crouched turns. The game has no crouched turn for this, so crouched, only the head follows, as in the base game.[/*]
+[*]Not tested yet: the torch and the zTBODLocomotionController pak from [url=https://www.nexusmods.com/thebloodofdawnwalker/mods/493]Controller and Keyboard True Analog Movement[/url], which replaces the locomotion layer the turns run through.[/*]
+[/list]
+For bug reports, set [font=Courier New]verbose_log = 1[/font] (Detailed log on the menu page) and send the DWTurnInPlace lines from your [font=Courier New]UE4SS.log[/font], with your game build and which UE4SS package you run.
+
+[size=4][b]Credits[/b][/size]
+Built on [url=https://github.com/UE4SS-RE/RE-UE4SS]UE4SS[/url] by the UE4SS-RE team (MIT). Inspired by Vaei's [url=https://github.com/Vaei/TurnInPlace]TurnInPlace[/url] (MIT), an actor-based turn in place plugin for Unreal. Settings page through mmarcussa's Mod Setting Menu. GPL-3.0-or-later, included in the archive.

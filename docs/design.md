@@ -132,5 +132,5 @@ it as `override`.
 |---|---|
 | 0, done | Spike: the hook, same-frame pop proven |
 | 1, done (tested live 2026-09-23, see below) | Settle trigger (camera past 50° and turning under about 30°/s for 0.3 s), chaining while panning, done when a seen turn ends, pop in the hook, guards (pause, idle and walking only, another system's rotation mode, crouch), ini |
-| 2, in progress | Test matrix. Done: combat, crouch, cutscene, dialogue, save and load. Wolf form is a sprint-only ability in vanilla, so the idle guards keep the mod out of it. Open: torch, horse (if any), map changes |
+| 2, in progress | Test matrix. Done: combat, crouch, cutscene, dialogue, save and load; a save made mid-turn loads with only the base entry when the mod is off (the player saves through its population stub, not the movement component); Framecore 2c, both profiles (2026-09-23). Wolf form is a sprint-only ability in vanilla, so the idle guards keep the mod out of it. Open: torch, map changes |
 | 3, in progress | Done: Mod Menu page (0.2.0), camera speed smoothing and `cancel_speed`, tuned defaults. Open: `zTBODLocomotionController` compatibility, release packaging; mid-turn polish only if wanted |
