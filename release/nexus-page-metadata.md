@@ -120,7 +120,8 @@ differs from `ModVersion` and `[Mod] Version`: add the new entry on top.
 - Wording: "rotation mode", never "camera mode". The mod reads the camera and never writes it.
 - Voice: first person where it helps, short, a hobbyist engineer explaining what it does. No sales
   language, no em dashes, no AI credit line in the text (the tag carries the disclosure).
-- No Source section while the GitHub repo is private. Add one after the hygiene sweep if it goes public.
+- The description's Source section links the GitHub repo, public since 2026-09-23. Sweep commit
+  messages and comments for personal info before each push.
 - Game build: the DLL reads the `AddMovementInput` vtable slot out of `execAddMovementInput` at load and
   cross-checks 267 (`docs/design.md`, "The input hook"). If it cannot find the call it logs an error and
   stays inactive. A game patch means retesting and updating the build number here and on the page.
