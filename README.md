@@ -73,6 +73,8 @@ Close the game and copy `mod/` to `Dawnwalker/Binaries/Win64/ue4ss/Mods/DWTurnIn
 - `config/turninplace.ini` in an installed copy holds the player's settings: merge new keys into it, never
   overwrite it.
 - `mod/dlls/main.pdb` never ships: it carries build paths.
+- UE4SS's hot reload (Ctrl+R) restarts the mod on the DLL already loaded: the mod pins its own image so the
+  reload cannot crash the game, and no new code is picked up. A new `main.dll` still needs the game closed.
 
 ## Layout
 

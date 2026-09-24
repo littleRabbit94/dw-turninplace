@@ -90,6 +90,9 @@ namespace
         }
     };
 
+    // The DLL is pinned (see the constructor), so a Ctrl+R restarts the mod on the same image and these keep the
+    // previous instance's values: reset_state() puts the per-instance ones back. g_original and g_vtable_entry stay:
+    // they describe the hook code, which is still reachable through any mod that hooked the slot after us.
     AddMovementInputFn g_original = nullptr;
     uintptr_t** g_vtable_entry = nullptr;
     std::atomic<void*> g_player{nullptr}; // null unless every offset the tick and the hook use is cached
@@ -103,6 +106,19 @@ namespace
     bool g_input = false;        // the player had movement input since the last tick
     bool g_input_popped = false; // the hook popped the held push for that input
     bool g_input_pop_ok = false;
+
+    auto reset_state() -> void
+    {
+        g_player.store(nullptr);
+        g_cmc = {};
+        g_pop = nullptr;
+        g_pop_handle_at = -1;
+        g_pop_ret_at = -1;
+        g_handle = -1;
+        g_input = false;
+        g_input_popped = false;
+        g_input_pop_ok = false;
+    }
 
     template <typename T>
     auto field(void* base, int32_t at) -> T&
@@ -134,6 +150,16 @@ namespace
             }
         }
         g_original(self, direction, scale, force);
+    }
+
+    // Keeps this DLL mapped for the life of the process. UE4SS's hot reload (Ctrl+R) destroys the mod, unloads the
+    // DLL and loads it again; its callback garbage collector frees the tick callback's std::function later, on
+    // its own thread, and would read a vtable out of an unmapped image. Pinned, the reload reuses this image.
+    auto pin_module() -> bool
+    {
+        HMODULE self{};
+        return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                                  reinterpret_cast<LPCWSTR>(&add_movement_input_hook), &self) != 0;
     }
 
     // The last `call qword ptr [reg+disp]` before the thunk's ret, as a vtable slot.
@@ -279,6 +305,11 @@ class DWTurnInPlace : public RC::CppUserModBase
         ModVersion = STR("0.2.0");
         ModDescription = STR("Turn in place with the game's own turn animations");
         ModAuthors = STR("littleRabbit6");
+        if (!pin_module())
+        {
+            Output::send<LogLevel::Warning>(STR("[DWTurnInPlace] could not pin the DLL (error {}): a hot reload (Ctrl+R) may crash\n"), GetLastError());
+        }
+        reset_state();
         m_settings_stamp = last_write(dwtip::SETTINGS_PATH);
         add_missing_keys();
         load_settings(false);
@@ -302,6 +333,7 @@ class DWTurnInPlace : public RC::CppUserModBase
                 if (*g_vtable_entry == reinterpret_cast<uintptr_t*>(&add_movement_input_hook))
                 {
                     *g_vtable_entry = reinterpret_cast<uintptr_t*>(g_original);
+                    g_vtable_entry = nullptr;
                 }
                 else
                 {
@@ -508,6 +540,26 @@ class DWTurnInPlace : public RC::CppUserModBase
 
         auto** vtable = *reinterpret_cast<uintptr_t***>(player_cdo);
         auto** entry = &vtable[slot];
+        // On a reused image the slot can still hold this hook (the last unload left it in place): the original
+        // is the one already known, never the hook itself. A foreign hook in a slot we once hooked may chain to
+        // this hook, so taking it as the original would call in a loop; the mod stays inactive instead.
+        if (*entry == reinterpret_cast<uintptr_t*>(&add_movement_input_hook))
+        {
+            if (!g_original)
+            {
+                Output::send<LogLevel::Error>(STR("[DWTurnInPlace] AddMovementInput slot already holds this hook and the original is unknown, inactive\n"));
+                return false;
+            }
+            g_vtable_entry = entry;
+            Output::send<LogLevel::Normal>(STR("[DWTurnInPlace] AddMovementInput hooked, vtable slot {} (expected {}), hook still in place from the last load\n"),
+                                           slot, EXPECTED_SLOT);
+            return true;
+        }
+        if (g_original && *entry != reinterpret_cast<uintptr_t*>(g_original))
+        {
+            Output::send<LogLevel::Error>(STR("[DWTurnInPlace] AddMovementInput slot holds another hook installed over this mod's, inactive\n"));
+            return false;
+        }
         DWORD prev{};
         if (!VirtualProtect(entry, sizeof(*entry), PAGE_READWRITE, &prev))
         {
